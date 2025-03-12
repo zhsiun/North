@@ -189,3 +189,32 @@ runService.RenderStepped:Connect(function()
         end
     end
 end)
+
+local destroyheight = workspace.FallenPartsDestroyHeight
+workspace.FallenPartsDestroyHeight = -9e9  -- Set extremely low to "delete" the void
+local localplr = game.Players.LocalPlayer
+
+-- Prevents the void from killing the player
+local function preventVoidDeath(character)
+    coroutine.wrap(function()
+        repeat task.wait() until character:FindFirstChildOfClass("Humanoid")
+        local hum = character:FindFirstChildOfClass("Humanoid")
+
+        hum.HealthChanged:Connect(function(health)
+            if character:GetPivot().Position.Y < destroyheight then
+                hum.Health = hum.MaxHealth  -- Restore health if void tries to kill
+            end
+        end)
+    end)()
+end
+
+if localplr.Character then
+    preventVoidDeath(localplr.Character)
+end
+
+local characteradded = localplr.CharacterAdded:Connect(preventVoidDeath)
+
+getgenv().deletescript123456lol69 = function()
+    workspace.FallenPartsDestroyHeight = destroyheight
+    characteradded:Disconnect()
+end
