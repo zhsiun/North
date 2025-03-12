@@ -1,6 +1,5 @@
 --[[ 
-    Target Strafe System (with Walkfling)
-    - Press T to select a target and start strafing + flinging
+    Target Strafe System (with Walkfling + Tool Fling + Stop Button)
 --]]
 
 local player = game.Players.LocalPlayer
@@ -10,12 +9,12 @@ local runService = game:GetService("RunService")
 local target = nil
 local strafeEnabled = false
 local strafeSpeed = 100
-local strafeDistance = 1 
-local strafeHeight = 0    
-local strafeKey = "t"
-local flingForce = 10000 -- Fling strength
+local strafeDistance = 1
+local strafeHeight = 0
+local strafeKey = Enum.KeyCode.T
+local flingForce = 10000
 
--- Ensure GUI is created only once and persists after resets
+-- Ensure GUI persists after resets
 local screenGui = game.CoreGui:FindFirstChild("StrafeGui")
 if not screenGui then
     screenGui = Instance.new("ScreenGui", game.CoreGui)
@@ -23,7 +22,7 @@ if not screenGui then
 end
 
 local Frame = Instance.new("Frame", screenGui)
-Frame.Size = UDim2.new(0, 320, 0, 80)
+Frame.Size = UDim2.new(0, 320, 0, 160)
 Frame.Position = UDim2.new(0.05, 0, 0.2, 0)
 Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 Frame.BorderSizePixel = 0
@@ -42,6 +41,7 @@ Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
 Title.BackgroundTransparency = 1
 
+-- Keybind Setter Function
 local function createKeybindSetter(label, defaultKey, position, callback)
     local keyFrame = Instance.new("Frame", Frame)
     keyFrame.Size = UDim2.new(1, -20, 0, 30)
@@ -54,7 +54,7 @@ local function createKeybindSetter(label, defaultKey, position, callback)
 
     local textLabel = Instance.new("TextLabel", keyFrame)
     textLabel.Size = UDim2.new(0.7, 0, 1, 0)
-    textLabel.Text = label .. ": " .. defaultKey
+    textLabel.Text = label .. ": " .. defaultKey.Name
     textLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     textLabel.Font = Enum.Font.Gotham
     textLabel.TextSize = 14
@@ -78,8 +78,9 @@ local function createKeybindSetter(label, defaultKey, position, callback)
         local connection
         connection = uis.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.Keyboard then
-                local newKey = input.KeyCode.Name:lower()
-                textLabel.Text = label .. ": " .. newKey
+                local newKey = input.KeyCode
+                strafeKey = newKey
+                textLabel.Text = label .. ": " .. newKey.Name
                 callback(newKey)
                 connection:Disconnect()
             end
@@ -87,13 +88,14 @@ local function createKeybindSetter(label, defaultKey, position, callback)
     end)
 end
 
-createKeybindSetter("Fling Key", strafeKey, UDim2.new(0, 10, 0, 40), function(value) strafeKey = value end)
+createKeybindSetter("Fling Key", strafeKey, UDim2.new(0, 10, 0, 40), function(value) 
+    strafeKey = value 
+end)
 
 -- Fling Function
 local function flingTarget()
     if target and target:FindFirstChild("HumanoidRootPart") then
         local hrp = target.HumanoidRootPart
-        -- Create a body velocity for the fling
         local bodyVelocity = Instance.new("BodyVelocity")
         bodyVelocity.Velocity = Vector3.new(
             math.random(-flingForce, flingForce),
@@ -103,72 +105,87 @@ local function flingTarget()
         bodyVelocity.MaxForce = Vector3.new(flingForce, flingForce, flingForce)
         bodyVelocity.Parent = hrp
         
-        -- Remove the body velocity after 0.1 seconds
         game.Debris:AddItem(bodyVelocity, 0.1)
     end
 end
 
--- Strafe Activation
+-- Create Tool
+local function createTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "Fling Tool"
+    tool.RequiresHandle = false
+    
+    tool.Activated:Connect(function()
+        local targetPart = mouse.Target
+        if targetPart then
+            local targetModel = targetPart:FindFirstAncestorOfClass("Model")
+            if targetModel and targetModel:FindFirstChild("Humanoid") and targetModel:FindFirstChild("HumanoidRootPart") then
+                target = targetModel
+                strafeEnabled = true
+            end
+        end
+    end)
+
+    tool.Parent = player.Backpack
+end
+
+-- Tool Fling Button
+local toolFlingButton = Instance.new("TextButton", Frame)
+toolFlingButton.Size = UDim2.new(1, -20, 0, 30)
+toolFlingButton.Position = UDim2.new(0, 10, 0, 80)
+toolFlingButton.Text = "Tool Fling"
+toolFlingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toolFlingButton.Font = Enum.Font.Gotham
+toolFlingButton.TextSize = 14
+toolFlingButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+toolFlingButton.MouseButton1Click:Connect(createTool)
+
+-- Stop Button
+local stopButton = Instance.new("TextButton", Frame)
+stopButton.Size = UDim2.new(1, -20, 0, 30)
+stopButton.Position = UDim2.new(0, 10, 0, 120)
+stopButton.Text = "Stop Strafing"
+stopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+stopButton.Font = Enum.Font.Gotham
+stopButton.TextSize = 14
+stopButton.BackgroundColor3 = Color3.fromRGB(255, 70, 70)
+stopButton.MouseButton1Click:Connect(function()
+    strafeEnabled = false
+    target = nil
+end)
+
+-- Toggle Strafing with Keybind + Targeting Fix
 uis.InputBegan:Connect(function(input)
-    if input.KeyCode.Name:lower() == strafeKey then
-        if target then
-            target = nil
+    if input.KeyCode == strafeKey then
+        if strafeEnabled then
             strafeEnabled = false
+            target = nil
         else
             local targetPart = mouse.Target
-            if targetPart and targetPart.Parent:FindFirstChild("HumanoidRootPart") then
-                target = targetPart.Parent
-                strafeEnabled = true
+            if targetPart then
+                local targetModel = targetPart:FindFirstAncestorOfClass("Model")
+                if targetModel and targetModel:FindFirstChild("Humanoid") and targetModel:FindFirstChild("HumanoidRootPart") then
+                    target = targetModel
+                    strafeEnabled = true
+                end
             end
         end
     end
 end)
 
--- Strafe + Fling Loop
+-- Strafing Loop
 runService.RenderStepped:Connect(function()
     if strafeEnabled and target then
         local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
         if hrp and target:FindFirstChild("HumanoidRootPart") then
-            -- Calculate strafing position
             local time = tick() * strafeSpeed
             local xOffset = math.cos(time) * strafeDistance
             local zOffset = math.sin(time) * strafeDistance
             local yOffset = strafeHeight
             hrp.CFrame = CFrame.new(target.HumanoidRootPart.Position + Vector3.new(xOffset, yOffset, zOffset))
-
-            -- Fling when close enough
             if (hrp.Position - target.HumanoidRootPart.Position).Magnitude < 5 then
                 flingTarget()
             end
         end
     end
 end)
-
-local destroyheight = workspace.FallenPartsDestroyHeight
-workspace.FallenPartsDestroyHeight = -9e9  -- Set extremely low to "delete" the void
-local localplr = game.Players.LocalPlayer
-
--- Prevents the void from killing the player
-local function preventVoidDeath(character)
-    coroutine.wrap(function()
-        repeat task.wait() until character:FindFirstChildOfClass("Humanoid")
-        local hum = character:FindFirstChildOfClass("Humanoid")
-
-        hum.HealthChanged:Connect(function(health)
-            if character:GetPivot().Position.Y < destroyheight then
-                hum.Health = hum.MaxHealth  -- Restore health if void tries to kill
-            end
-        end)
-    end)()
-end
-
-if localplr.Character then
-    preventVoidDeath(localplr.Character)
-end
-
-local characteradded = localplr.CharacterAdded:Connect(preventVoidDeath)
-
-getgenv().deletescript123456lol69 = function()
-    workspace.FallenPartsDestroyHeight = destroyheight
-    characteradded:Disconnect()
-end
