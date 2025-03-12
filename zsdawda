@@ -1,0 +1,174 @@
+--[[ 
+    Target Strafe System (with Walkfling)
+    - Press T to select a target and start strafing + flinging
+--]]
+
+local player = game.Players.LocalPlayer
+local mouse = player:GetMouse()
+local uis = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local target = nil
+local strafeEnabled = false
+local strafeSpeed = 100
+local strafeDistance = 1 
+local strafeHeight = 0    
+local strafeKey = "t"
+local flingForce = 10000 -- Fling strength
+
+-- Ensure GUI is created only once and persists after resets
+local screenGui = game.CoreGui:FindFirstChild("StrafeGui")
+if not screenGui then
+    screenGui = Instance.new("ScreenGui", game.CoreGui)
+    screenGui.Name = "StrafeGui"
+end
+
+local Frame = Instance.new("Frame", screenGui)
+Frame.Size = UDim2.new(0, 320, 0, 80)
+Frame.Position = UDim2.new(0.05, 0, 0.2, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.BorderSizePixel = 0
+Frame.BackgroundTransparency = 0.2
+Frame.Active = true
+Frame.Draggable = true
+
+local UICorner = Instance.new("UICorner", Frame)
+UICorner.CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel", Frame)
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Text = "Z's Fling"
+Title.TextSize = 18
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.BackgroundTransparency = 1
+
+local function createKeybindSetter(label, defaultKey, position, callback)
+    local keyFrame = Instance.new("Frame", Frame)
+    keyFrame.Size = UDim2.new(1, -20, 0, 30)
+    keyFrame.Position = position
+    keyFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    keyFrame.BorderSizePixel = 0
+
+    local UICorner = Instance.new("UICorner", keyFrame)
+    UICorner.CornerRadius = UDim.new(0, 8)
+
+    local textLabel = Instance.new("TextLabel", keyFrame)
+    textLabel.Size = UDim2.new(0.7, 0, 1, 0)
+    textLabel.Text = label .. ": " .. defaultKey
+    textLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    textLabel.Font = Enum.Font.Gotham
+    textLabel.TextSize = 14
+    textLabel.BackgroundTransparency = 1
+
+    local keyButton = Instance.new("TextButton", keyFrame)
+    keyButton.Size = UDim2.new(0.3, 0, 1, 0)
+    keyButton.Position = UDim2.new(0.7, 0, 0, 0)
+    keyButton.Text = "Set"
+    keyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    keyButton.Font = Enum.Font.Gotham
+    keyButton.TextSize = 14
+    keyButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    keyButton.BorderSizePixel = 0
+
+    local keyCorner = Instance.new("UICorner", keyButton)
+    keyCorner.CornerRadius = UDim.new(0, 6)
+
+    keyButton.MouseButton1Click:Connect(function()
+        textLabel.Text = label .. ": Press Key"
+        local connection
+        connection = uis.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                local newKey = input.KeyCode.Name:lower()
+                textLabel.Text = label .. ": " .. newKey
+                callback(newKey)
+                connection:Disconnect()
+            end
+        end)
+    end)
+end
+
+createKeybindSetter("Fling Key", strafeKey, UDim2.new(0, 10, 0, 40), function(value) strafeKey = value end)
+
+-- Fling Function
+local function flingTarget()
+    if target and target:FindFirstChild("HumanoidRootPart") then
+        local hrp = target.HumanoidRootPart
+        -- Create a body velocity for the fling
+        local bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.Velocity = Vector3.new(
+            math.random(-flingForce, flingForce),
+            flingForce,
+            math.random(-flingForce, flingForce)
+        )
+        bodyVelocity.MaxForce = Vector3.new(flingForce, flingForce, flingForce)
+        bodyVelocity.Parent = hrp
+        
+        -- Remove the body velocity after 0.1 seconds
+        game.Debris:AddItem(bodyVelocity, 0.1)
+    end
+end
+
+-- Strafe Activation
+uis.InputBegan:Connect(function(input)
+    if input.KeyCode.Name:lower() == strafeKey then
+        if target then
+            target = nil
+            strafeEnabled = false
+        else
+            local targetPart = mouse.Target
+            if targetPart and targetPart.Parent:FindFirstChild("HumanoidRootPart") then
+                target = targetPart.Parent
+                strafeEnabled = true
+            end
+        end
+    end
+end)
+
+-- Strafe + Fling Loop
+runService.RenderStepped:Connect(function()
+    if strafeEnabled and target then
+        local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+        if hrp and target:FindFirstChild("HumanoidRootPart") then
+            -- Calculate strafing position
+            local time = tick() * strafeSpeed
+            local xOffset = math.cos(time) * strafeDistance
+            local zOffset = math.sin(time) * strafeDistance
+            local yOffset = strafeHeight
+            hrp.CFrame = CFrame.new(target.HumanoidRootPart.Position + Vector3.new(xOffset, yOffset, zOffset))
+
+            -- Fling when close enough
+            if (hrp.Position - target.HumanoidRootPart.Position).Magnitude < 5 then
+                flingTarget()
+            end
+        end
+    end
+end)
+
+local destroyheight = workspace.FallenPartsDestroyHeight
+workspace.FallenPartsDestroyHeight = -9e9  -- Set extremely low to "delete" the void
+local localplr = game.Players.LocalPlayer
+
+-- Prevents the void from killing the player
+local function preventVoidDeath(character)
+    coroutine.wrap(function()
+        repeat task.wait() until character:FindFirstChildOfClass("Humanoid")
+        local hum = character:FindFirstChildOfClass("Humanoid")
+
+        hum.HealthChanged:Connect(function(health)
+            if character:GetPivot().Position.Y < destroyheight then
+                hum.Health = hum.MaxHealth  -- Restore health if void tries to kill
+            end
+        end)
+    end)()
+end
+
+if localplr.Character then
+    preventVoidDeath(localplr.Character)
+end
+
+local characteradded = localplr.CharacterAdded:Connect(preventVoidDeath)
+
+getgenv().deletescript123456lol69 = function()
+    workspace.FallenPartsDestroyHeight = destroyheight
+    characteradded:Disconnect()
+end
